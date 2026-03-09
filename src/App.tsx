@@ -500,6 +500,30 @@ const scoreWorldDomain=(dom:typeof DOMAINS[0],transit:PPos[],date:Date)=>{
   else if(isBadPhase){score-=3;signals.push({text:`${mp.icon}${mp.name} — unfavourable phase`,val:-3,type:"caution",detail:`This phase works against ${dom.name.toLowerCase()} globally`});}
   // VOC
   if(isVOC(transit)){score-=5;signals.push({text:"🚫 Void of Course Moon",val:-5,type:"warning",detail:"Global undercurrent — actions started now tend not to land"});}
+
+  // Eclipse sensitivity — eclipses within 14° of domain ruler degrees trigger strong global signals
+  const RECENT_ECLIPSES=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8,76.4,256.4,92.3,272.3];
+  transit.filter(p=>dom.rulers.includes(p.name)).forEach(p=>{
+    RECENT_ECLIPSES.forEach(eDeg=>{let d=Math.abs(p.lng-eDeg);if(d>180)d=360-d;
+      if(d<8){const isMal=["Saturn","Mars","Pluto"].includes(p.name);const val=isMal?-5:4;
+        score+=val;signals.push({text:`🌑 Eclipse point activates ${p.name} (${d.toFixed(1)}° orb)`,val,type:isMal?"warning":"green",detail:isMal?`Eclipse zone amplifies ${p.name} challenges globally — turbulence elevated`:`Eclipse zone energises ${p.name} — globally heightened ${dom.name.toLowerCase()} energy`});
+      }
+    });
+  });
+
+  // Planetary ingress — when a slow planet just entered a new sign (within 5°), signals major global shift
+  transit.filter(p=>dom.rulers.includes(p.name)&&["Jupiter","Saturn","Uranus","Neptune","Pluto"].includes(p.name)).forEach(p=>{
+    const degsInSign=p.degree;
+    if(degsInSign<5&&!p.retro){score+=5;signals.push({text:`🚪 ${p.name} freshly ingressed ${p.sign.name}`,val:5,type:"green",detail:`${p.name} just entered ${p.sign.name} — major 1-2 year global theme beginning for ${dom.name.toLowerCase()}`});}
+    else if(degsInSign>25&&!p.retro){score+=2;signals.push({text:`⚡ ${p.name} approaching ${p.sign.name} exit`,val:2,type:"green",detail:`${p.name} at final degrees of ${p.sign.name} — themes crystallising before major shift`});}
+  });
+
+  // Mutual reception between world rulers (adds global harmony)
+  const worldMR=getMutualReceptions(transit);
+  worldMR.filter(mr=>dom.rulers.includes(mr.a)&&dom.rulers.includes(mr.b)).forEach(mr=>{
+    score+=4;signals.push({text:`🤝 ${mr.a}/${mr.b} mutual reception`,val:4,type:"green",detail:"Two domain rulers in each other's signs — cooperative global energy, amplified support"});
+  });
+
   const norm=Math.max(-100,Math.min(100,score*2.0));
   const gn=signals.filter(s=>s.type==="green").length,rd=signals.filter(s=>["red","warning","caution"].includes(s.type)).length;
   // Probability: Iran methodology — convergence × signal strength × direction agreement
@@ -712,6 +736,53 @@ const scorePersonalDomain=(dom:typeof DOMAINS[0],natal:PPos[],transit:PPos[],dat
     });
   }
 
+  // S20: Eclipse sensitivity (T1+ — eclipses affect everyone)
+  // Known eclipse degrees 2024-2026 (N/S node axis)
+  const ECLIPSE_DEGS=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8,76.4,256.4,92.3,272.3];
+  natal.filter(p=>dom.rulers.includes(p.name)).forEach(nP=>{
+    ECLIPSE_DEGS.forEach(eDeg=>{let d=Math.abs(nP.lng-eDeg);if(d>180)d=360-d;
+      if(d<6){score+=5;signals.push({text:`🌑 Eclipse activates natal ${nP.name} (${d.toFixed(1)}°)`,val:5,type:"green",conf:8,detail:`A 2024-26 eclipse fell on your natal ${nP.name} — this domain is karmically activated for 6 months`,system:"Eclipse"});}
+    });
+    // Current transit planets on eclipse points
+    transit.filter(p=>dom.rulers.includes(p.name)).forEach(tP=>{
+      ECLIPSE_DEGS.forEach(eDeg=>{let d=Math.abs(tP.lng-eDeg);if(d>180)d=360-d;
+        if(d<5){const isMal=MALEFICS.includes(tP.name);const v=isMal?-4:3;
+          score+=v;signals.push({text:`🌑 ${tP.name} on eclipse point`,val:v,type:isMal?"warning":"green",conf:7,detail:`Transit ${tP.name} activating recent eclipse degree — amplified ${isMal?"disruption":"opportunity"}`,system:"Eclipse"});
+        }
+      });
+    });
+  });
+
+  // S21: Fixed stars (T2+) — the stars the ancients used for fate prediction
+  if(tier>=2){
+    const FIXED_STARS=[
+      {name:"Regulus",  lng:149.8,nature:"benefic", quality:"Success, courage, leadership — fame possible"},
+      {name:"Algol",    lng:126.0,nature:"malefic",  quality:"Intense upheaval — the most feared star in ancient astrology"},
+      {name:"Spica",    lng:203.3,nature:"benefic",  quality:"Gifts, talent, artistry — protected outcomes"},
+      {name:"Antares",  lng:249.9,nature:"malefic",  quality:"Obsession, volatility — extremes in all directions"},
+      {name:"Aldebaran",lng:69.7, nature:"benefic",  quality:"Integrity brings success — honour and achievement"},
+      {name:"Fomalhaut",lng:333.9,nature:"benefic",  quality:"Idealism, vision, dreams materialising"},
+      {name:"Achernar", lng:15.3, nature:"benefic",  quality:"Crisis resolved — clearing the way forward"},
+      {name:"Pleiades", lng:59.7, nature:"mixed",    quality:"Grief and glory intertwined — bittersweet outcomes"},
+      {name:"Vega",     lng:284.4,nature:"benefic",  quality:"Artistic talent, charisma, charm elevated"},
+      {name:"Sirius",   lng:104.1,nature:"benefic",  quality:"Ambition rewarded, extraordinary achievement possible"},
+    ];
+    transit.filter(p=>dom.rulers.includes(p.name)).forEach(tP=>{
+      FIXED_STARS.forEach(star=>{let d=Math.abs(tP.lng-star.lng);if(d>180)d=360-d;
+        if(d<1.5){const v=star.nature==="benefic"?4:star.nature==="malefic"?-5:2;
+          score+=v;signals.push({text:`⭐ ${tP.name} conjunct ${star.name}`,val:v,type:v>0?"green":"warning",conf:7,detail:star.quality,system:"FixedStar"});
+        }
+      });
+    });
+    natal.filter(p=>dom.rulers.includes(p.name)).forEach(nP=>{
+      FIXED_STARS.forEach(star=>{let d=Math.abs(nP.lng-star.lng);if(d>180)d=360-d;
+        if(d<1.0){const v=star.nature==="benefic"?3:star.nature==="malefic"?-3:1;
+          score+=v;signals.push({text:`⭐ Natal ${nP.name} on ${star.name}`,val:v,type:v>0?"green":"caution",conf:6,detail:`Born with ${nP.name} conjunct ${star.name}: ${star.quality}`,system:"FixedStar"});
+        }
+      });
+    });
+  }
+
   const norm=Math.max(-100,Math.min(100,score*2.2));
   const gn=signals.filter(s=>s.type==="green").length,rd=signals.filter(s=>["red","warning","caution"].includes(s.type)).length;
   const sysCount=new Set(signals.map(s=>s.system)).size;
@@ -804,6 +875,51 @@ export default function App() {
   const [teamMembers,setTeamMembers]=useState<any[]>([]);
   const [newName,setNewName]=useState(""),newDob2=useState("")[0];const [newDob,setNewDob]=useState("");
   const [teamData,setTeamData]=useState<any[]>([]);
+
+  const [chatOpen,setChatOpen]=useState(false);
+  const [chatMessages,setChatMessages]=useState<{role:"user"|"oracle",text:string,loading?:boolean}[]>([{role:"oracle",text:"Ask me anything about your reading — I'll give you a straight answer based on what the planets are actually doing today. 🔮"}]);
+  const [chatInput,setChatInput]=useState("");
+  const [chatLoading,setChatLoading]=useState(false);
+
+  const sendChat=useCallback(async()=>{
+    if(!chatInput.trim()||chatLoading)return;
+    const userMsg=chatInput.trim();setChatInput("");
+    setChatMessages(m=>[...m,{role:"user",text:userMsg}]);
+    setChatLoading(true);
+    const ctx=data?`ORACLE READING CONTEXT (${targetDate}):
+Moon: ${data.mp?.name} (${data.mp?.energy})
+VOC: ${data.voc?"YES — active":"No"}
+Retrograde planets: ${data.retros?.map((r:any)=>r.name).join(", ")||"None"}
+${dob?`Sun sign: ${data.sunSign?.name}, Moon sign: ${data.moonSign?.name}`:"No birth date entered"}
+World domain probabilities: ${data.worldDomains?.slice(0,9).map((d:any)=>`${d.name}: ${d.probability}%`).join(", ")||""}
+${data.personalDomains?.length?`Personal probabilities: ${data.personalDomains.slice(0,9).map((d:any)=>`${d.name}: ${d.probability}%`).join(", ")}`:""}
+Top world signals: ${data.worldDomains?.[0]?.signals?.slice(0,3).map((s:any)=>s.text).join(" | ")||""}
+`:"No reading data loaded.";
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",max_tokens:600,
+        system:`You are the Oracle — a direct astrological prediction tool using multi-system convergence (the same methodology that called the Iran oil strike to within days). You are NOT a friend — you are a precision instrument.
+
+Rules:
+- Give a DIRECT answer first: YES / NO / WAIT / DEPENDS
+- Then explain WHY in 2-3 short bullet points using the actual planetary data
+- Reference specific planets and signals from the context when relevant
+- Be blunt and specific — no vague spiritual fluff
+- If data is missing (no birth date), say so and answer from world energy only
+- Keep responses under 200 words
+- Speak as "the Oracle" in third person sparingly, mostly just state facts directly
+
+${ctx}`,
+        messages:chatMessages.filter((_,i)=>i>0).map(m=>({role:m.role==="oracle"?"assistant":"user",content:m.text})).concat([{role:"user",content:userMsg}])
+      })});
+      const json=await res.json();
+      const reply=json.content?.[0]?.text||"Signal unclear — try rephrasing.";
+      setChatMessages(m=>[...m,{role:"oracle",text:reply}]);
+    }catch{
+      setChatMessages(m=>[...m,{role:"oracle",text:"Connection lost. Check network and try again."}]);
+    }
+    setChatLoading(false);
+  },[chatInput,chatLoading,chatMessages,data,dob,targetDate]);
 
   const compute=useCallback(()=>{
     setLoading(true);
@@ -1258,6 +1374,45 @@ export default function App() {
         <i>Oracle v10 · World + Personal Convergence Engine · % probability via multi-system triangulation</i><br/>
         <i>"The stars incline, they do not compel."</i>
       </div>
+
+      {/* ══ ORACLE CHAT BUBBLE ══ */}
+      {/* Floating button */}
+      <div onClick={()=>setChatOpen(o=>!o)} style={{position:"fixed",bottom:24,right:20,width:54,height:54,borderRadius:"50%",background:`linear-gradient(135deg,${CL.pur},${CL.acc})`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:`0 4px 20px ${CL.pur}60`,zIndex:1000,fontSize:22,transition:"transform 0.2s",transform:chatOpen?"rotate(45deg)":"none"}}>
+        {chatOpen?"✕":"🔮"}
+      </div>
+
+      {/* Chat panel */}
+      {chatOpen&&(
+        <div style={{position:"fixed",bottom:90,right:16,width:Math.min(380,window.innerWidth-32),maxHeight:"70vh",background:CL.card,border:`1px solid ${CL.pur}40`,borderRadius:16,display:"flex",flexDirection:"column",zIndex:999,boxShadow:`0 8px 40px #00000080`,overflow:"hidden"}}>
+          {/* Header */}
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${CL.bdr}`,background:`linear-gradient(135deg,${CL.card},#1a1230)`,flexShrink:0}}>
+            <div style={{fontSize:11,fontWeight:800,color:CL.acc,fontFamily:"system-ui",letterSpacing:2}}>🔮 ASK THE ORACLE</div>
+            <div style={{fontSize:9,color:CL.dim,fontFamily:"system-ui",marginTop:2}}>Direct answers · Based on your actual reading data</div>
+          </div>
+          {/* Messages */}
+          <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+            {chatMessages.map((m,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{maxWidth:"85%",padding:"10px 13px",borderRadius:m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px",background:m.role==="user"?`linear-gradient(135deg,${CL.pur},${CL.acc})`:CL.card2,color:m.role==="user"?"#000":CL.txt,fontSize:12,lineHeight:1.65,fontFamily:"system-ui",whiteSpace:"pre-wrap"}}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {chatLoading&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"10px 13px",background:CL.card2,borderRadius:"14px 14px 14px 4px",color:CL.dim,fontSize:12,fontFamily:"system-ui"}}>Oracle is consulting the stars<span style={{animation:"blink 1s infinite"}}>...</span></div></div>}
+          </div>
+          {/* Suggested questions */}
+          <div style={{padding:"8px 12px",borderTop:`1px solid ${CL.bdr}20`,display:"flex",gap:6,overflowX:"auto",flexShrink:0}}>
+            {["Should I sign today?","Best day this week?","Love energy today?","Career move now?"].map(q=>(
+              <button key={q} onClick={()=>{setChatInput(q);}} style={{background:`${CL.pur}15`,border:`1px solid ${CL.pur}30`,borderRadius:20,padding:"4px 10px",fontSize:9,color:CL.dim,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui"}}>{q}</button>
+            ))}
+          </div>
+          {/* Input */}
+          <div style={{padding:"10px 12px",borderTop:`1px solid ${CL.bdr}`,display:"flex",gap:8,flexShrink:0}}>
+            <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder="Ask the Oracle anything..." style={{flex:1,padding:"9px 12px",background:CL.card2,border:`1px solid ${CL.bdr}`,borderRadius:10,color:CL.txt,fontSize:12,outline:"none"}}/>
+            <button onClick={sendChat} disabled={!chatInput.trim()||chatLoading} style={{background:`linear-gradient(135deg,${CL.pur},${CL.acc})`,color:"#000",border:"none",borderRadius:10,padding:"9px 16px",fontSize:12,fontWeight:800,cursor:"pointer",opacity:!chatInput.trim()||chatLoading?0.4:1}}>→</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
