@@ -458,7 +458,8 @@ const getPartOfFortune=(pos:PPos[],asc:number,isDay:boolean)=>{
   return isDay?mod360(asc+moon-sun):mod360(asc+sun-moon);
 };
 
-const ECLIPSE_DEGREES=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8];
+// ── ECLIPSE REFERENCE DEGREES 2024-2026 (shared across engines) ──────────────
+const ECLIPSE_DEGREES=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8,76.4,256.4,92.3,272.3];
 
 // ─── WORLD ENERGY ENGINE — Iran methodology applied globally ───
 // Uses transit-to-transit aspects (no natal needed) + world indicators per domain
@@ -502,9 +503,8 @@ const scoreWorldDomain=(dom:typeof DOMAINS[0],transit:PPos[],date:Date)=>{
   if(isVOC(transit)){score-=5;signals.push({text:"🚫 Void of Course Moon",val:-5,type:"warning",detail:"Global undercurrent — actions started now tend not to land"});}
 
   // Eclipse sensitivity — eclipses within 14° of domain ruler degrees trigger strong global signals
-  const RECENT_ECLIPSES=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8,76.4,256.4,92.3,272.3];
   transit.filter(p=>dom.rulers.includes(p.name)).forEach(p=>{
-    RECENT_ECLIPSES.forEach(eDeg=>{let d=Math.abs(p.lng-eDeg);if(d>180)d=360-d;
+    ECLIPSE_DEGREES.forEach(eDeg=>{let d=Math.abs(p.lng-eDeg);if(d>180)d=360-d;
       if(d<8){const isMal=["Saturn","Mars","Pluto"].includes(p.name);const val=isMal?-5:4;
         score+=val;signals.push({text:`🌑 Eclipse point activates ${p.name} (${d.toFixed(1)}° orb)`,val,type:isMal?"warning":"green",detail:isMal?`Eclipse zone amplifies ${p.name} challenges globally — turbulence elevated`:`Eclipse zone energises ${p.name} — globally heightened ${dom.name.toLowerCase()} energy`});
       }
@@ -537,7 +537,11 @@ const scoreWorldDomain=(dom:typeof DOMAINS[0],transit:PPos[],date:Date)=>{
   const domVariance=(dom.rulers.reduce((s:number,r:string)=>{const p=transit.find(x=>x.name===r);return s+(p?p.lng*0.05:0);},0))%6-3;
   const probability=Math.max(18,Math.min(92,Math.round(rawProb+domVariance)));
   const convergence=Math.round(dirAgreement*100);
-  return{score:norm,signals:signals.sort((a,b)=>Math.abs(b.val)-Math.abs(a.val)).slice(0,8),probability,convergence,greenCount:gn,redCount:rd};
+  // Sort signals: keep top warnings always visible, then fill rest with strongest by magnitude
+  const warnings=signals.filter(s=>s.type==="warning"||s.type==="red").sort((a,b)=>Math.abs(b.val)-Math.abs(a.val)).slice(0,3);
+  const others=signals.filter(s=>s.type!=="warning"&&s.type!=="red").sort((a,b)=>Math.abs(b.val)-Math.abs(a.val));
+  const sortedSignals=[...warnings,...others].slice(0,8);
+  return{score:norm,signals:sortedSignals,probability,convergence,greenCount:gn,redCount:rd};
 };
 
 // ─── PERSONAL DOMAIN SCORING — 17 systems, Iran triangulation ─
@@ -736,17 +740,15 @@ const scorePersonalDomain=(dom:typeof DOMAINS[0],natal:PPos[],transit:PPos[],dat
   }
 
   // S20: Eclipse sensitivity (T1+ — eclipses affect everyone)
-  // Known eclipse degrees 2024-2026 (N/S node axis)
-  const ECLIPSE_DEGS=[5.1,19.2,356.0,10.7,354.4,9.2,345.4,178.6,338.5,23.1,353.2,12.8,76.4,256.4,92.3,272.3];
   // Natal planets on eclipse points = 6-month activation window
   natal.filter(p=>dom.rulers.includes(p.name)).forEach(nP=>{
-    ECLIPSE_DEGS.forEach(eDeg=>{let d=Math.abs(nP.lng-eDeg);if(d>180)d=360-d;
+    ECLIPSE_DEGREES.forEach(eDeg=>{let d=Math.abs(nP.lng-eDeg);if(d>180)d=360-d;
       if(d<6){score+=5;signals.push({text:`🌑 Eclipse activates natal ${nP.name} (${d.toFixed(1)}°)`,val:5,type:"green",conf:8,detail:`A 2024-26 eclipse fell on your natal ${nP.name} — this domain is karmically activated`,system:"Eclipse"});}
     });
   });
   // Transit domain rulers currently on eclipse points (separate check, not nested)
   transit.filter(p=>dom.rulers.includes(p.name)).forEach(tP=>{
-    ECLIPSE_DEGS.forEach(eDeg=>{let d=Math.abs(tP.lng-eDeg);if(d>180)d=360-d;
+    ECLIPSE_DEGREES.forEach(eDeg=>{let d=Math.abs(tP.lng-eDeg);if(d>180)d=360-d;
       if(d<5){const isMal=MALEFICS.includes(tP.name);const v=isMal?-4:3;
         score+=v;signals.push({text:`🌑 ${tP.name} on eclipse point`,val:v,type:isMal?"warning":"green",conf:7,detail:`Transit ${tP.name} activating eclipse degree — amplified ${isMal?"disruption":"opportunity"}`,system:"Eclipse"});
       }
@@ -873,7 +875,7 @@ export default function App() {
   const [tier,setTier]=useState(1);
   const [deepDiveId,setDeepDiveId]=useState<string|null>(null);
   const [teamMembers,setTeamMembers]=useState<any[]>([]);
-  const [newName,setNewName]=useState(""),newDob2=useState("")[0];const [newDob,setNewDob]=useState("");
+  const [newName,setNewName]=useState(""); const [newDob,setNewDob]=useState("");
   const [teamData,setTeamData]=useState<any[]>([]);
 
   const [chatOpen,setChatOpen]=useState(false);
@@ -987,7 +989,7 @@ ${ctx}`,
           pDs=DOMAINS.map(dm=>({...dm,...scorePersonalDomain(dm,natal,dt,d,bDate,tier,isD,sa,[],fMid,fMR,fAnti,fSR,houses,ascLng,partOfFortune)}));
           pAvg=pDs.reduce((s:number,x:any)=>s+x.score,0)/pDs.length;
         }
-        forecast.push({date:d,worldOverall:wAvg,personalOverall:pAvg,overall:dob?pAvg:wAvg,moonPhase:getMoonPhase(dt),worldDomains:wDs,personalDomains:pDs});
+        forecast.push({date:d,worldOverall:wAvg,personalOverall:pAvg,overall:dob?pAvg:wAvg,worldAvgProb:Math.round(wDs.reduce((s:number,x:any)=>s+x.probability,0)/wDs.length),personalAvgProb:pDs.length?Math.round(pDs.reduce((s:number,x:any)=>s+x.probability,0)/pDs.length):0,moonPhase:getMoonPhase(dt),worldDomains:wDs,personalDomains:pDs});
       }
       const bestDays=DOMAINS.map((dom,di)=>{
         const sorted=[...forecast].sort((a:any,b:any)=>(b.personalDomains[di]?.score||b.worldDomains[di].score)-(a.personalDomains[di]?.score||a.worldDomains[di].score));
@@ -996,7 +998,7 @@ ${ctx}`,
       setData({transit,natal,worldDomains,personalDomains,mp,voc,retros,stellia,sunSign,moonSign,elements,birthGK,transitGK,forecast,bestDays,allAspects:dob?getAspects(transit,natal,tier>=2):[],midpoints,mutualReceptions,antiscia,solarReturnBonus,houses,ascLng,partOfFortune,hasTime,hasPlace});
       setLoading(false);
     },600);
-  },[dob,targetDate,targetTime,birthTime,tier]);
+  },[dob,targetDate,targetTime,birthTime,birthCity,tier]);
 
   useEffect(()=>{compute();},[targetDate,targetTime,dob,birthTime,tier]);
 
@@ -1271,9 +1273,9 @@ ${ctx}`,
             <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:12}}>
               {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:8,color:CL.dim,fontFamily:"system-ui",fontWeight:700}}>{d}</div>)}
               {Array.from({length:data.forecast[0].date.getDay()}).map((_,i)=><div key={"e"+i}/>)}
-              {data.forecast.map((day:any,i:number)=>{const score=dob?day.personalOverall:day.worldOverall;const prob=Math.max(20,Math.min(90,Math.round(50+score*0.25)));const c=pC(prob);return(<div key={i} onClick={()=>{setTargetDate(day.date.toISOString().split("T")[0]);setTab(dob?"personal":"world");}} style={{aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:8,cursor:"pointer",background:c+"12",border:i===0?`2px solid ${CL.acc}`:`1px solid ${c}20`}}><div style={{fontSize:11,fontWeight:700,fontFamily:"system-ui"}}>{day.date.getDate()}</div><div style={{fontSize:7,fontWeight:700,color:c,fontFamily:"system-ui"}}>{prob}%</div><div style={{fontSize:7}}>{day.moonPhase.icon}</div></div>);})}
+              {data.forecast.map((day:any,i:number)=>{const prob=dob?(day.personalAvgProb||50):(day.worldAvgProb||50);const c=pC(prob);return(<div key={i} onClick={()=>{setTargetDate(day.date.toISOString().split("T")[0]);setTab(dob?"personal":"world");}} style={{aspectRatio:"1",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:8,cursor:"pointer",background:c+"12",border:i===0?`2px solid ${CL.acc}`:`1px solid ${c}20`}}><div style={{fontSize:11,fontWeight:700,fontFamily:"system-ui"}}>{day.date.getDate()}</div><div style={{fontSize:7,fontWeight:700,color:c,fontFamily:"system-ui"}}>{prob}%</div><div style={{fontSize:7}}>{day.moonPhase.icon}</div></div>);})}
             </div>
-            {data.forecast.slice(0,14).map((day:any,i:number)=>{const score=dob?day.personalOverall:day.worldOverall;const prob=Math.max(20,Math.min(90,Math.round(50+score*0.25)));return(<div key={i} onClick={()=>{setTargetDate(day.date.toISOString().split("T")[0]);setTab(dob?"personal":"world");}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:i%2?"transparent":CL.card2,borderRadius:6,cursor:"pointer",marginBottom:2,fontFamily:"system-ui",fontSize:11}}>
+            {data.forecast.slice(0,14).map((day:any,i:number)=>{const score=dob?day.personalOverall:day.worldOverall;const prob=dob?(day.personalAvgProb||50):(day.worldAvgProb||50);return(<div key={i} onClick={()=>{setTargetDate(day.date.toISOString().split("T")[0]);setTab(dob?"personal":"world");}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:i%2?"transparent":CL.card2,borderRadius:6,cursor:"pointer",marginBottom:2,fontFamily:"system-ui",fontSize:11}}>
               <div style={{minWidth:85,fontWeight:i===0?700:400,color:i===0?CL.acc:CL.txt}}>{fmtD(day.date)}{i===0?" ★":""}</div>
               <div style={{flex:1,height:5,background:CL.bdr,borderRadius:3,overflow:"hidden",position:"relative"}}><div style={{position:"absolute",left:"50%",width:1,height:"100%",background:CL.mut}}/><div style={{position:"absolute",left:score>0?"50%":`${50+score/2}%`,width:`${Math.abs(score/2)}%`,height:"100%",background:pC(prob),borderRadius:3}}/></div>
               <span style={{fontSize:9}}>{day.moonPhase.icon}</span>
