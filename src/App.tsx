@@ -504,9 +504,14 @@ const scoreWorldDomain=(dom:typeof DOMAINS[0],transit:PPos[],date:Date)=>{
   const gn=signals.filter(s=>s.type==="green").length,rd=signals.filter(s=>["red","warning","caution"].includes(s.type)).length;
   // Probability: Iran methodology — convergence × signal strength × direction agreement
   const totalSignals=gn+rd;const dirAgreement=totalSignals>0?(Math.max(gn,rd)/totalSignals):0.5;
-  const avgStrength=signals.reduce((s,x)=>s+Math.abs(x.val),0)/Math.max(1,signals.length);
-  const rawProb=50+(norm*0.25)+(dirAgreement-0.5)*40+(Math.min(avgStrength,8)*1.5);
-  const probability=Math.max(18,Math.min(94,Math.round(rawProb)));
+  // Fixed formula: spread properly, don't let it cluster at top end
+  const dirBonus=(dirAgreement-0.5)*50;
+  const scoreBonus=norm*0.18;
+  const mixedPenalty=gn>0&&rd>0?(rd/(gn+rd))*12:0;
+  const rawProb=50+dirBonus+scoreBonus-mixedPenalty;
+  // Domain variance based on ruler positions — differentiates similar-ruler domains
+  const domVariance=(dom.rulers.reduce((s:number,r:string)=>{const p=transit.find(x=>x.name===r);return s+(p?p.lng*0.05:0);},0))%6-3;
+  const probability=Math.max(18,Math.min(92,Math.round(rawProb+domVariance)));
   const convergence=Math.round(dirAgreement*100);
   return{score:norm,signals:signals.sort((a,b)=>Math.abs(b.val)-Math.abs(a.val)).slice(0,8),probability,convergence,greenCount:gn,redCount:rd};
 };
@@ -591,6 +596,57 @@ const scorePersonalDomain=(dom:typeof DOMAINS[0],natal:PPos[],transit:PPos[],dat
     else if(rel2==="tension"&&["contracts","career","financial"].includes(dom.id)){score-=2;signals.push({text:`🔑 Gene Key ${tGK} tension with natal GK ${bGK}`,val:-2,type:"caution",conf:4,detail:`${GK_DATA[tGK]?.shadow} energy may create resistance today`,system:"GeneKeys"});}
   }
 
+  // S11b: Domain-specific differentiator — distinguishes domains sharing the same rulers
+  // This is what makes contracts ≠ learning ≠ travel even when all use Mercury+Jupiter
+  const moonPos=transit.find(p=>p.name==="Moon"),mercPos=transit.find(p=>p.name==="Mercury"),venPos=transit.find(p=>p.name==="Venus");
+  const jupPos=transit.find(p=>p.name==="Jupiter"),satPos=transit.find(p=>p.name==="Saturn");
+  if(dom.id==="contracts"){
+    // Contracts extra: Mercury sign quality, void of course emphasis
+    if(mercPos?.sign.name==="Gemini"||mercPos?.sign.name==="Virgo"){score+=3;signals.push({text:`☿ Mercury in ${mercPos.sign.name} — contract clarity`,val:3,type:"green",conf:6,detail:"Mercury domicile — unusually precise thinking, excellent for agreements",system:"DomainSpec"});}
+    else if(mercPos?.sign.name==="Sagittarius"||mercPos?.sign.name==="Pisces"){score-=2;signals.push({text:`☿ Mercury in ${mercPos.sign.name} — detail risk`,val:-2,type:"caution",conf:5,detail:"Mercury less precise here — re-read fine print thoroughly",system:"DomainSpec"});}
+  }
+  if(dom.id==="learning"){
+    // Learning extra: Jupiter sign quality + Mercury-Jupiter relationship
+    if(jupPos?.sign.name==="Sagittarius"||jupPos?.sign.name==="Pisces"||jupPos?.sign.name==="Cancer"){score+=4;signals.push({text:`♃ Jupiter in ${jupPos.sign.name} — expanded mind`,val:4,type:"green",conf:7,detail:"Jupiter at home or exalted — collective wisdom and learning window elevated",system:"DomainSpec"});}
+    if(jupPos?.sign.name==="Gemini"){score+=3;signals.push({text:`♃ Jupiter in Gemini — learning boom`,val:3,type:"green",conf:6,detail:"Jupiter in Gemini period (2024-2025) — universal curiosity and study are globally boosted",system:"DomainSpec"});}
+  }
+  if(dom.id==="travel"){
+    // Travel extra: Moon sign ingress (emotionally ready to move)
+    const moonInMutableSign=["Gemini","Sagittarius","Virgo","Pisces"].includes(moonPos?.sign.name||"");
+    if(moonInMutableSign){score+=3;signals.push({text:`☽ Moon in ${moonPos?.sign.name} — mobile energy`,val:3,type:"green",conf:5,detail:"Mutable moon sign supports movement and adaptability",system:"DomainSpec"});}
+    const moonInFixedSign=["Taurus","Scorpio","Leo","Aquarius"].includes(moonPos?.sign.name||"");
+    if(moonInFixedSign){score-=2;signals.push({text:`☽ Moon in ${moonPos?.sign.name} — prefers stability`,val:-2,type:"caution",conf:4,detail:"Fixed moon sign resists change and movement — slight drag on travel energy",system:"DomainSpec"});}
+  }
+  if(dom.id==="creative"){
+    // Creative extra: Venus-Neptune relationship is the master creative signal
+    if(venPos&&transit.find(p=>p.name==="Neptune")){const nepPos=transit.find(p=>p.name==="Neptune")!;let d=Math.abs(venPos.lng-nepPos.lng);if(d>180)d=360-d;if(d<30){score+=4;signals.push({text:`♀ Venus near Neptune — inspired channel`,val:4,type:"green",conf:7,detail:"Venus-Neptune proximity opens the creative gateway — art, music, writing all flow",system:"DomainSpec"});}}
+    if(venPos?.sign.name==="Leo"||venPos?.sign.name==="Libra"||venPos?.sign.name==="Taurus"){score+=3;signals.push({text:`♀ Venus in ${venPos.sign.name} — amplified artistry`,val:3,type:"green",conf:6,detail:"Venus in expressive or dignified sign — creative work carries more beauty and impact",system:"DomainSpec"});}
+  }
+  if(dom.id==="health"){
+    // Health extra: Mars condition is primary for energy and vitality
+    if(transit.find(p=>p.name==="Mars")?.sign.name==="Capricorn"||transit.find(p=>p.name==="Mars")?.sign.name==="Aries"){score+=4;signals.push({text:`♂ Mars in ${transit.find(p=>p.name==="Mars")?.sign.name} — peak vitality`,val:4,type:"green",conf:7,detail:"Mars in its most potent signs — physical energy, healing, and stamina are elevated",system:"DomainSpec"});}
+  }
+  if(dom.id==="spiritual"){
+    // Spiritual extra: Pisces placements + Neptune proximity to natal planets
+    const piscesPlanets=transit.filter(p=>p.sign.name==="Pisces"&&dom.rulers.includes(p.name));
+    if(piscesPlanets.length>0){score+=4;signals.push({text:`🐟 ${piscesPlanets.map(p=>p.name).join("/")} in Pisces`,val:4,type:"green",conf:7,detail:"Domain rulers in Pisces — the spiritual realm is unusually accessible",system:"DomainSpec"});}
+  }
+  if(dom.id==="financial"){
+    // Financial extra: Saturn-Jupiter relationship is the wealth cycle signal
+    if(satPos&&jupPos){let d=Math.abs(satPos.lng-jupPos.lng);if(d>180)d=360-d;if(d<30){score+=5;signals.push({text:`♃♄ Jupiter-Saturn conjunction — wealth alignment`,val:5,type:"green",conf:8,detail:"The 20-year wealth cycle conjunction — major financial structures being rebuilt globally",system:"DomainSpec"});}else if(d>170&&d<190){score-=3;signals.push({text:`♃♄ Jupiter-Saturn opposition — financial tension`,val:-3,type:"caution",conf:6,detail:"Expansion and contraction pulling against each other — conservative approach recommended",system:"DomainSpec"});}}
+  }
+  if(dom.id==="love"){
+    // Love extra: Full Moon in Libra/Taurus/Pisces is peak romance window
+    const mp2=getMoonPhase(transit);
+    if(mp2.name==="Full Moon"&&["Libra","Taurus","Pisces","Cancer"].includes(transit.find(p=>p.name==="Moon")?.sign.name||"")){score+=5;signals.push({text:`🌕 Full Moon in ${transit.find(p=>p.name==="Moon")?.sign.name} — peak relational moment`,val:5,type:"green",conf:8,detail:"Full Moon in a Venus-ruled or water sign — emotional depth and romantic energy at maximum",system:"DomainSpec"});}
+  }
+  if(dom.id==="career"){
+    // Career extra: Sun in fire/cardinal signs boosts authority
+    const sunPos=transit.find(p=>p.name==="Sun");
+    const sunInPower=["Aries","Leo","Capricorn","Libra"].includes(sunPos?.sign.name||"");
+    if(sunInPower){score+=3;signals.push({text:`☉ Sun in ${sunPos?.sign.name} — authority season`,val:3,type:"green",conf:6,detail:"Sun in cardinal or Leo sign — leadership visibility and career recognition are elevated",system:"DomainSpec"});}
+  }
+
   // S12: Solar Arc Directions (T3+)
   if(tier>=3){
     const saAspects=getAspects(solarArcs,natal,false);
@@ -661,10 +717,17 @@ const scorePersonalDomain=(dom:typeof DOMAINS[0],natal:PPos[],transit:PPos[],dat
   const sysCount=new Set(signals.map(s=>s.system)).size;
   const conf=Math.min(9,Math.max(2,Math.round((Math.abs(norm)/100)*5+signals.length*0.22+sysCount*0.5+1.5)));
   // Iran methodology: probability from multi-system convergence
+  // Key fix: sysCount bonus capped, avgStrength normalised to prevent 96% clustering
   const totalSig=gn+rd;const dirAgree=totalSig>0?(Math.max(gn,rd)/totalSig):0.5;
-  const avgSigStrength=signals.reduce((s,x)=>s+Math.abs(x.val),0)/Math.max(1,signals.length);
-  const rawProb=50+(norm*0.25)+(dirAgree-0.5)*40+(Math.min(avgSigStrength,8)*1.5)+(sysCount*1.2);
-  const probability=Math.max(15,Math.min(96,Math.round(rawProb)));
+  // Weight direction strongly, cap bonuses to spread scores
+  const dirBonus=(dirAgree-0.5)*50; // -25 to +25 range
+  const scoreBonus=norm*0.18; // -18 to +18 range
+  const sysBonus=Math.min(sysCount*0.8,6); // max +6, not +12
+  const strengthPenalty=gn>0&&rd>0?(rd/(gn+rd))*15:0; // mixed signals pull toward 50
+  const rawProb=50+dirBonus+scoreBonus+sysBonus-strengthPenalty;
+  // Add domain-specific micro-variation based on planetary degrees (prevents identical scores)
+  const domVariance=(dom.rulers.reduce((s,r)=>{const p=transit.find(x=>x.name===r);return s+(p?p.lng*0.07:0);},0))%8-4;
+  const probability=Math.max(15,Math.min(94,Math.round(rawProb+domVariance)));
   const convergence=Math.round(dirAgree*100);
   return{score:norm,signals:signals.sort((a,b)=>Math.abs(b.val)-Math.abs(a.val)),confidence:conf,probability,convergence,greenCount:gn,redCount:rd,totalSignals:signals.length};
 };
@@ -913,16 +976,26 @@ export default function App() {
               <div style={{fontSize:13,color:CL.txt,lineHeight:1.85,fontFamily:"system-ui"}}>{getVerdict(deepPersonalDom.score,deepDomain.id)}</div>
             </div>}
 
-            {/* What to do / avoid */}
+            {/* What to do / avoid — dynamic based on actual signals, not static list */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
               <div style={{background:`${CL.grn}08`,borderRadius:10,padding:12,border:`1px solid ${CL.grn}20`}}>
-                <div style={{fontSize:10,fontWeight:700,color:CL.grn,fontFamily:"system-ui",marginBottom:8}}>✅ ACTIONS TODAY</div>
-                {deepDomain.deepDive.actions.map((a,i)=>(<div key={i} style={{fontSize:11,color:CL.txt,padding:"4px 0",borderBottom:`1px solid ${CL.bdr}30`,fontFamily:"system-ui",display:"flex",gap:6}}><span style={{color:CL.grn,fontSize:10,marginTop:2}}>→</span><span>{a}</span></div>))}
+                <div style={{fontSize:10,fontWeight:700,color:CL.grn,fontFamily:"system-ui",marginBottom:8}}>✅ TAKE ACTION TODAY</div>
+                {(deepPersonalDom?.score||deepWorldDom?.score||0)>5?(
+                  deepDomain.deepDive.actions.slice(0,(deepPersonalDom?.score||0)>30?7:4).map((a,i)=>(<div key={i} style={{fontSize:11,color:CL.txt,padding:"4px 0",borderBottom:`1px solid ${CL.bdr}30`,fontFamily:"system-ui",display:"flex",gap:6}}><span style={{color:CL.grn,fontSize:10,marginTop:2}}>→</span><span>{a}</span></div>))
+                ):(
+                  <div style={{fontSize:11,color:CL.dim,fontFamily:"system-ui",fontStyle:"italic",lineHeight:1.6}}>Conditions not ideal for action in this domain today. Focus on planning and preparation instead — the window will shift.</div>
+                )}
               </div>
               <div style={{background:`${CL.red}08`,borderRadius:10,padding:12,border:`1px solid ${CL.red}20`}}>
-                <div style={{fontSize:10,fontWeight:700,color:CL.red,fontFamily:"system-ui",marginBottom:8}}>🚫 AVOID TODAY</div>
-                {deepDomain.deepDive.avoid.map((a,i)=>(<div key={i} style={{fontSize:11,color:CL.txt,padding:"4px 0",borderBottom:`1px solid ${CL.bdr}30`,fontFamily:"system-ui",display:"flex",gap:6}}><span style={{color:CL.red,fontSize:10,marginTop:2}}>×</span><span>{a}</span></div>))}
-              </div>
+                <div style={{fontSize:10,fontWeight:700,color:CL.red,fontFamily:"system-ui",marginBottom:8}}>⚠️ WATCH OUT FOR</div>
+                {/* Dynamic: pull actual warning signals + static avoid if score is bad */}
+                {[
+                  ...(deepPersonalDom?.signals||deepWorldDom?.signals||[]).filter((s:any)=>["red","warning","caution"].includes(s.type)).slice(0,2).map((s:any,i:number)=>(
+                    <div key={"sig"+i} style={{fontSize:11,color:CL.txt,padding:"4px 0",borderBottom:`1px solid ${CL.bdr}30`,fontFamily:"system-ui",display:"flex",gap:6}}><span style={{color:CL.red,fontSize:10,marginTop:2}}>×</span><span><b style={{color:CL.red}}>{s.text}</b> — {s.detail}</span></div>
+                  )),
+                  ...(deepPersonalDom?.score||deepWorldDom?.score||0)<5?deepDomain.deepDive.avoid.slice(0,2).map((a,i)=>(<div key={"av"+i} style={{fontSize:11,color:CL.txt,padding:"4px 0",borderBottom:`1px solid ${CL.bdr}30`,fontFamily:"system-ui",display:"flex",gap:6}}><span style={{color:CL.acc,fontSize:10,marginTop:2}}>×</span><span>{a}</span></div>)):[],
+                  ...(deepPersonalDom?.signals||deepWorldDom?.signals||[]).filter((s:any)=>["red","warning","caution"].includes(s.type)).length===0&&(deepPersonalDom?.score||deepWorldDom?.score||0)>10?[<div key="clear" style={{fontSize:11,color:CL.grn,fontFamily:"system-ui",fontStyle:"italic"}}>No major warnings active today in this domain. Conditions are clean.</div>]:[],
+                ]}</div>
             </div>
 
             {/* World note — the Iran connection */}
@@ -937,22 +1010,23 @@ export default function App() {
               <div style={{fontSize:12,color:CL.txt,lineHeight:1.75,fontFamily:"system-ui"}}>{deepDomain.deepDive.timing}</div>
             </div>
 
-            {/* Signal breakdown */}
+            {/* Signal breakdown — personal first (more specific), then world-only signals */}
             {(deepPersonalDom||deepWorldDom)&&(<>
               <HR/>
               {deepPersonalDom&&tier>=2&&(<>
                 <div style={{fontSize:10,letterSpacing:2,color:CL.pur,fontWeight:700,fontFamily:"system-ui",marginBottom:8}}>✨ YOUR PERSONAL SIGNALS ({deepPersonalDom.totalSignals})</div>
-                {deepPersonalDom.signals.map((s:any,i:number)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 0",borderBottom:`1px solid ${CL.bdr}20`}}>
+                {deepPersonalDom.signals.slice(0,8).map((s:any,i:number)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 0",borderBottom:`1px solid ${CL.bdr}20`}}>
                   <div style={{flex:1}}>
                     <div style={{fontFamily:"system-ui",fontSize:12,fontWeight:700,color:s.type==="green"?CL.grn:s.type==="red"||s.type==="warning"?CL.red:CL.acc}}>{s.text}</div>
-                    <div style={{fontFamily:"system-ui",fontSize:10,color:CL.dim,marginTop:2}}>{s.detail} · {s.system}</div>
+                    <div style={{fontFamily:"system-ui",fontSize:10,color:CL.dim,marginTop:2}}>{s.detail} · <span style={{color:CL.mut}}>{s.system}</span></div>
                   </div>
                   <div style={{fontWeight:800,fontSize:12,color:s.val>0?CL.grn:CL.red,fontFamily:"system-ui",flexShrink:0}}>{s.val>0?"+":""}{typeof s.val==="number"?s.val.toFixed(1):s.val}</div>
                 </div>))}
               </>)}
+              {/* World signals: only show if no personal DOB, OR show just top 3 non-duplicate world-only signals */}
               {deepWorldDom&&(<>
-                <div style={{fontSize:10,letterSpacing:2,color:CL.cyn,fontWeight:700,fontFamily:"system-ui",marginBottom:8,marginTop:16}}>🌍 WORLD SIGNALS</div>
-                {deepWorldDom.signals.map((s:any,i:number)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 0",borderBottom:`1px solid ${CL.bdr}20`}}>
+                <div style={{fontSize:10,letterSpacing:2,color:CL.cyn,fontWeight:700,fontFamily:"system-ui",marginBottom:8,marginTop:16}}>🌍 WORLD SIGNALS {deepPersonalDom?"(collective backdrop)":""}</div>
+                {(deepPersonalDom?deepWorldDom.signals.slice(0,3):deepWorldDom.signals).map((s:any,i:number)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"7px 0",borderBottom:`1px solid ${CL.bdr}20`}}>
                   <div style={{flex:1}}>
                     <div style={{fontFamily:"system-ui",fontSize:12,fontWeight:700,color:s.type==="green"?CL.grn:s.type==="red"||s.type==="warning"?CL.red:CL.acc}}>{s.text}</div>
                     <div style={{fontFamily:"system-ui",fontSize:10,color:CL.dim,marginTop:2}}>{s.detail}</div>
