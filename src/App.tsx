@@ -920,7 +920,7 @@ Active aspects: ${data.allAspects?.slice(0,5).map((a:any)=>`${a.p1.name} ${a.asp
 Tier: ${tier} (${tier===1?"Basic":tier===2?"Plus":tier===3?"Pro":"Pro+"})
 `:"No reading data loaded yet.";
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({
         model:"claude-sonnet-4-20250514",max_tokens:600,
         system:`You are the Oracle — a direct astrological prediction tool using multi-system convergence (the same methodology that called the Iran oil strike to within days). You are NOT a friend — you are a precision instrument.
 
@@ -939,8 +939,9 @@ ${ctx}`,
       const json=await res.json();
       const reply=json.content?.[0]?.text||"Signal unclear — try rephrasing.";
       setChatMessages(m=>[...m,{role:"oracle",text:reply}]);
-    }catch{
-      setChatMessages(m=>[...m,{role:"oracle",text:"Connection lost. Check network and try again."}]);
+    }catch(err){
+      console.error("Oracle chat error:",err);
+      setChatMessages(m=>[...m,{role:"oracle",text:"⚠️ API error — please refresh and try again. If this persists, check your connection."}]);
     }
     setChatLoading(false);
   },[chatInput,chatLoading,chatMessages,data,dob,targetDate]);
@@ -1401,17 +1402,20 @@ ${ctx}`,
 
       {/* ══ ORACLE CHAT BUBBLE ══ */}
       {/* Floating button */}
-      <div onClick={()=>setChatOpen(o=>!o)} style={{position:"fixed",bottom:24,right:20,width:54,height:54,borderRadius:"50%",background:`linear-gradient(135deg,${CL.pur},${CL.acc})`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:`0 4px 20px ${CL.pur}60`,zIndex:1000,fontSize:22,transition:"transform 0.2s",transform:chatOpen?"rotate(45deg)":"none"}}>
+      <div onClick={()=>setChatOpen(o=>!o)} style={{position:"fixed",bottom:24,right:20,width:54,height:54,borderRadius:"50%",background:chatOpen?CL.card2:`linear-gradient(135deg,${CL.pur},${CL.acc})`,border:chatOpen?`1px solid ${CL.pur}`:  "none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:`0 4px 20px ${CL.pur}60`,zIndex:1002,fontSize:chatOpen?20:22,transition:"all 0.2s",color:chatOpen?CL.dim:"inherit"}}>
         {chatOpen?"✕":"🔮"}
       </div>
 
       {/* Chat panel */}
       {chatOpen&&(
-        <div style={{position:"fixed",bottom:90,right:16,width:"min(380px, calc(100vw - 32px))",maxHeight:"70vh",background:CL.card,border:`1px solid ${CL.pur}40`,borderRadius:16,display:"flex",flexDirection:"column",zIndex:999,boxShadow:`0 8px 40px #00000080`,overflow:"hidden",animation:"slideUp 0.2s ease"}}>
-          {/* Header */}
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${CL.bdr}`,background:`linear-gradient(135deg,${CL.card},#1a1230)`,flexShrink:0}}>
-            <div style={{fontSize:11,fontWeight:800,color:CL.acc,fontFamily:"system-ui",letterSpacing:2}}>🔮 ASK THE ORACLE</div>
-            <div style={{fontSize:9,color:CL.dim,fontFamily:"system-ui",marginTop:2}}>Direct answers · Based on your actual reading data</div>
+        <div style={{position:"fixed",bottom:90,right:16,width:"min(380px, calc(100vw - 32px))",maxHeight:"70vh",background:CL.card,border:`1px solid ${CL.pur}40`,borderRadius:16,display:"flex",flexDirection:"column",zIndex:1001,boxShadow:`0 8px 40px #00000080`,overflow:"hidden",animation:"slideUp 0.2s ease"}}>
+          {/* Header with explicit close */}
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${CL.bdr}`,background:`linear-gradient(135deg,${CL.card},#1a1230)`,flexShrink:0,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:800,color:CL.acc,fontFamily:"system-ui",letterSpacing:2}}>🔮 ASK THE ORACLE</div>
+              <div style={{fontSize:9,color:CL.dim,fontFamily:"system-ui",marginTop:2}}>Direct answers · Based on your actual reading data</div>
+            </div>
+            <button onClick={()=>setChatOpen(false)} style={{background:"transparent",border:`1px solid ${CL.bdr}`,borderRadius:"50%",width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:CL.dim,fontSize:14,flexShrink:0}}>✕</button>
           </div>
           {/* Messages */}
           <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
@@ -1455,14 +1459,14 @@ ${data.worldDomains?.map((d:any)=>`- ${d.icon} ${d.name}: ${d.probability}%`).jo
 ${teamData?.length>0?`TEAM: ${teamData.map((m:any)=>`${m.name}(${m.probability}%)`).join(", ")}`:""}
 `:"No data loaded.";
                 try{
-                  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+                  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({
                     model:"claude-sonnet-4-20250514",max_tokens:400,
                     system:`You are the Oracle — a direct astrological prediction tool. Give YES/NO/WAIT first, then 2-3 bullet points using specific planets and percentages from the data. Max 150 words. No fluff.\n\n${qCtx}`,
                     messages:histSnap.map((m:any)=>({role:m.role==="oracle"?"assistant":"user",content:m.text})).concat([{role:"user",content:q}])
                   })});
                   const json=await res.json();
                   setChatMessages(m=>[...m,{role:"oracle",text:json.content?.[0]?.text||"Signal unclear."}]);
-                }catch{setChatMessages(m=>[...m,{role:"oracle",text:"Connection lost."}]);}
+                }catch(err){console.error("Oracle quick-q:",err);setChatMessages(m=>[...m,{role:"oracle",text:"⚠️ API error — try again."}]);}
                 setChatLoading(false);
               }} style={{background:`${CL.pur}15`,border:`1px solid ${CL.pur}30`,borderRadius:20,padding:"4px 10px",fontSize:9,color:CL.dim,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui"}}>{q}</button>
             ))}
