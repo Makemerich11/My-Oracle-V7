@@ -889,15 +889,36 @@ export default function App() {
     const historyBeforeSend=chatMessages.filter((_,i)=>i>0); // capture before state update
     setChatMessages(m=>[...m,{role:"user",text:userMsg}]);
     setChatLoading(true);
-    const ctx=data?`ORACLE READING CONTEXT (${targetDate}):
-Moon: ${data.mp?.name} (${data.mp?.energy})
-VOC: ${data.voc?"YES — active":"No"}
-Retrograde planets: ${data.retros?.map((r:any)=>r.name).join(", ")||"None"}
-${dob?`Sun sign: ${data.sunSign?.name}, Moon sign: ${data.moonSign?.name}`:"No birth date entered"}
-World domain probabilities: ${data.worldDomains?.slice(0,9).map((d:any)=>`${d.name}: ${d.probability}%`).join(", ")||""}
-${data.personalDomains?.length?`Personal probabilities: ${data.personalDomains.slice(0,9).map((d:any)=>`${d.name}: ${d.probability}%`).join(", ")}`:""}
-Top world signals: ${data.worldDomains?.[0]?.signals?.slice(0,3).map((s:any)=>s.text).join(" | ")||""}
-`:"No reading data loaded.";
+    const ctx=data?`═══ ORACLE FULL READING CONTEXT (${targetDate}) ═══
+
+LUNAR CONDITIONS:
+- Moon Phase: ${data.mp?.name} — ${data.mp?.energy}
+- Void of Course: ${data.voc?"YES — actions tend to fizzle, delay if possible":"No — lunar energy active"}
+- Retrograde planets: ${data.retros?.map((r:any)=>r.name).join(", ")||"None"}
+
+CURRENT PLANETARY POSITIONS (transits):
+${data.transit?.map((p:any)=>`- ${p.planet?.sym||""} ${p.name}: ${p.degree?.toFixed(1)}° ${p.sign?.name}${p.retro?" ℞":""}`).join("\n")||"unavailable"}
+
+${dob?`USER NATAL CHART (born ${dob}):
+- Sun: ${data.sunSign?.name} — ${data.sunSign?.trait||""}
+- Moon: ${data.moonSign?.name}
+- Gene Key: ${data.birthGK||"unknown"}
+- Natal positions: ${data.natal?.map((p:any)=>`${p.name} ${p.degree?.toFixed(1)}° ${p.sign?.name}`).join(", ")||""}
+- Elemental balance: 🔥${data.elements?.fire} 🌍${data.elements?.earth} 💨${data.elements?.air} 💧${data.elements?.water}
+
+PERSONAL DOMAIN PROBABILITIES (your birth chart vs today):
+${data.personalDomains?.map((d:any)=>`- ${d.icon} ${d.name}: ${d.probability}% (score: ${d.score?.toFixed(0)}, confidence: ${d.confidence}/10)
+  Top signals: ${d.signals?.slice(0,2).map((s:any)=>`${s.text} [${s.val>0?"+":""}${typeof s.val==="number"?s.val.toFixed(1):s.val}]`).join(" | ")||"none"}`).join("\n")||"No personal data"}
+`:"NO BIRTH DATE — answering from world energy only.\n"}
+WORLD ENERGY DOMAIN PROBABILITIES (collective, affects everyone):
+${data.worldDomains?.map((d:any)=>`- ${d.icon} ${d.name}: ${d.probability}% | Top: ${d.signals?.slice(0,2).map((s:any)=>s.text).join(" | ")||""}`).join("\n")||""}
+
+${teamData?.length>0?`TEAM MEMBERS ON FILE:
+${teamData.map((m:any)=>`- ${m.name} (born ${m.dob}): Overall ${m.probability}% | ${m.domains?.slice(0,3).map((d:any)=>`${d.icon}${d.probability}%`).join(" ")}`).join("\n")}`:""}
+
+Active aspects: ${data.allAspects?.slice(0,5).map((a:any)=>`${a.p1.name} ${a.asp.name} ${a.p2.name} (${a.exact}% exact)`).join(", ")||""}
+Tier: ${tier} (${tier===1?"Basic":tier===2?"Plus":tier===3?"Pro":"Pro+"})
+`:"No reading data loaded yet.";
     try{
       const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         model:"claude-sonnet-4-20250514",max_tokens:600,
@@ -1196,7 +1217,7 @@ ${ctx}`,
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,flexShrink:0}}>
                   <ProbTick probability={d.probability}/>
-                  <button onClick={()=>setDeepDiveId(d.id)} style={{background:"transparent",border:`1px solid ${CL.bdr}`,borderRadius:8,padding:"4px 10px",fontSize:9,color:CL.dim,cursor:"pointer",fontFamily:"system-ui",letterSpacing:0.5}}>Deep Dive →</button>
+                  <button onClick={()=>setDeepDiveId(d.id)} style={{background:`linear-gradient(135deg,${CL.pur}cc,${CL.acc}cc)`,border:"none",borderRadius:10,padding:"8px 14px",fontSize:11,fontWeight:800,color:"#000",cursor:"pointer",fontFamily:"system-ui",letterSpacing:0.5,whiteSpace:"nowrap"}}>🔍 Deep Dive</button>
                 </div>
               </div>
               <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap",fontFamily:"system-ui",fontSize:10,color:CL.dim}}>
@@ -1242,7 +1263,7 @@ ${ctx}`,
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,flexShrink:0}}>
                   <ProbTick probability={d.probability}/>
-                  <button onClick={()=>setDeepDiveId(d.id)} style={{background:"transparent",border:`1px solid ${CL.bdr}`,borderRadius:8,padding:"4px 10px",fontSize:9,color:CL.dim,cursor:"pointer",fontFamily:"system-ui"}}>Deep Dive →</button>
+                  <button onClick={()=>setDeepDiveId(d.id)} style={{background:`linear-gradient(135deg,${CL.pur}cc,${CL.acc}cc)`,border:"none",borderRadius:10,padding:"8px 14px",fontSize:11,fontWeight:800,color:"#000",cursor:"pointer",fontFamily:"system-ui",whiteSpace:"nowrap"}}>🔍 Deep Dive</button>
                 </div>
               </div>
               <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap",fontFamily:"system-ui",fontSize:10,color:CL.dim}}>
@@ -1408,10 +1429,40 @@ ${ctx}`,
             {["Should I sign today?","Best day this week?","Love energy today?","Career move now?","Financial timing?","Travel safe?"].map(q=>(
               <button key={q} onClick={async()=>{
                 if(chatLoading)return;
+                const histSnap=[...chatMessages].filter((_,i)=>i>0);
                 setChatMessages(m=>[...m,{role:"user",text:q}]);
                 setChatLoading(true);
-                const ctx=data?`ORACLE CONTEXT (${targetDate}): Moon: ${data.mp?.name}. VOC: ${data.voc?"YES":"No"}. Retros: ${data.retros?.map((r:any)=>r.name).join(",")||"None"}. World domains: ${data.worldDomains?.slice(0,9).map((d:any)=>`${d.name}:${d.probability}%`).join(", ")}. ${data.personalDomains?.length?`Personal: ${data.personalDomains.slice(0,9).map((d:any)=>`${d.name}:${d.probability}%`).join(", ")}`:""}`:  "No data.";
-                try{const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:400,system:`You are the Oracle — direct astrological prediction tool. Answer with YES/NO/WAIT first, then 2 bullet points WHY from the planetary data. Max 150 words. ${ctx}`,messages:[{role:"user",content:q}]})});const json=await res.json();setChatMessages(m=>[...m,{role:"oracle",text:json.content?.[0]?.text||"Signal unclear."}]);}catch{setChatMessages(m=>[...m,{role:"oracle",text:"Connection lost."}]);}
+                const qCtx=data?`═══ ORACLE FULL READING CONTEXT (${targetDate}) ═══
+
+LUNAR CONDITIONS:
+- Moon Phase: ${data.mp?.name} — ${data.mp?.energy}
+- Void of Course: ${data.voc?"YES — actions tend to fizzle":"No — lunar energy active"}
+- Retrograde planets: ${data.retros?.map((r:any)=>r.name).join(", ")||"None"}
+
+CURRENT PLANETARY POSITIONS:
+${data.transit?.map((p:any)=>`- ${p.planet?.sym||""} ${p.name}: ${p.degree?.toFixed(1)}° ${p.sign?.name}${p.retro?" ℞":""}`).join("\n")||""}
+
+${dob?`USER NATAL CHART (born ${dob}):
+- Sun: ${data.sunSign?.name} — Moon: ${data.moonSign?.name}
+- Natal: ${data.natal?.map((p:any)=>`${p.name} ${p.degree?.toFixed(1)}° ${p.sign?.name}`).join(", ")||""}
+
+PERSONAL DOMAIN PROBABILITIES:
+${data.personalDomains?.map((d:any)=>`- ${d.icon} ${d.name}: ${d.probability}% | Top signals: ${d.signals?.slice(0,2).map((s:any)=>s.text).join(" | ")||""}`).join("\n")||""}
+`:"NO BIRTH DATE — world energy only.\n"}
+WORLD ENERGY:
+${data.worldDomains?.map((d:any)=>`- ${d.icon} ${d.name}: ${d.probability}%`).join("\n")||""}
+
+${teamData?.length>0?`TEAM: ${teamData.map((m:any)=>`${m.name}(${m.probability}%)`).join(", ")}`:""}
+`:"No data loaded.";
+                try{
+                  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+                    model:"claude-sonnet-4-20250514",max_tokens:400,
+                    system:`You are the Oracle — a direct astrological prediction tool. Give YES/NO/WAIT first, then 2-3 bullet points using specific planets and percentages from the data. Max 150 words. No fluff.\n\n${qCtx}`,
+                    messages:histSnap.map((m:any)=>({role:m.role==="oracle"?"assistant":"user",content:m.text})).concat([{role:"user",content:q}])
+                  })});
+                  const json=await res.json();
+                  setChatMessages(m=>[...m,{role:"oracle",text:json.content?.[0]?.text||"Signal unclear."}]);
+                }catch{setChatMessages(m=>[...m,{role:"oracle",text:"Connection lost."}]);}
                 setChatLoading(false);
               }} style={{background:`${CL.pur}15`,border:`1px solid ${CL.pur}30`,borderRadius:20,padding:"4px 10px",fontSize:9,color:CL.dim,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"system-ui"}}>{q}</button>
             ))}
